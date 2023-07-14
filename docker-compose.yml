@@ -1,0 +1,194 @@
+version: '3.9'
+
+services:
+  axonserver:
+    image: axoniq/axonserver
+    hostname: axonserver
+    container_name: axonserver
+    volumes:
+      - type: bind
+        source: ./axonserver/data
+        target: /data
+      - type: bind
+        source: ./axonserver/events
+        target: /eventdata
+      - type: bind
+        source: ./axonserver/config
+        target: /config
+        read_only: true
+    ports:
+      - '8025:8025'
+      - '8124:8124'
+      - '8224:8224'
+    networks:
+      backend:
+        aliases:
+          - "axonserver"
+  mongodb:
+    image: mongo:6-jammy
+    container_name: mongodb
+    ports:
+      - '27017:27017'
+    volumes:
+      - dbdata6:/data/db
+    networks:
+      backend:
+        aliases:
+          - "mongodb"
+  mongodbtest:
+    image: mongo:latest
+    container_name: mongodbtest
+    ports:
+      - '27018:27018'
+    networks:
+      backend:
+        aliases:
+          - "mongodbtest"
+  mysql:
+    image: mysql:latest
+    container_name: mysql_database
+    restart: always
+    ports:
+      - 3307:3306
+    volumes:
+      - ./mysql-init/products-init.sql:/docker-entrypoint-initdb.d/products-init.sql
+      - sql-db:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: team
+    networks:
+      backend:
+        aliases:
+          - "mysql"
+  configserver:
+    build: ./config-server
+    image: configserver:latest
+    container_name: configServer
+    environment:
+      PROFILE: "dev"
+    ports:
+      - "7071:7071"
+    networks:
+      backend:
+        aliases:
+          - "configserver"
+  eurekaserver:
+    build: ./eureka-server
+    image: eurekaserver:latest
+    environment:
+      CONFIGSERVER: configserver
+      PROFILE: dev
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+    container_name: eurekaServer
+    ports:
+      - "7070:7070"
+    depends_on:
+      - configserver
+    networks:
+      backend:
+        aliases:
+          - "eurekaserver"
+  userservice:
+    build: ./user-service
+    image: user-service:latest
+    container_name: user-service
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      CONFIGSERVER_URI: "http://configserver:7071"
+      configserver: 'configserver'
+      eurekaserver: 'eurekaserver'
+      axonserver: 'axonserver'
+      SPRING_DATA_MONGODB_URI: mongodb://host.docker.internal:27017
+      mongodb: 'mongodb'
+      mongodbtest: 'mongodbtest'
+      CONFIGSERVER_PORT: "7071"
+      DATABASESERVER_PORT: "27017"
+    depends_on:
+      - axonserver
+      - configserver
+      - eurekaserver
+      - mongodb
+    ports:
+      - "5001:5001"
+    networks:
+      backend:
+        aliases:
+          - "users-service"
+#  gatewayserver:
+#    build: ./gateway-server
+#    image: gatewayserver:latest
+#    deploy:
+#      restart_policy:
+#        condition: on-failure
+#        delay: 5s
+#        max_attempts: 3
+#        window: 120s
+#    container_name: gatewayServer
+#    ports:
+#      - "7072:7072"
+#    environment:
+#      PROFILE: "dev"
+#      SERVER_PORT: "7072"
+#      LOGSTASH: logstash
+#      ZIPKIN: zipkin
+#      CONFIGSERVER: configserver
+#      EUREKASERVER: eurekaserver
+#      EUREKASERVER_PORT: "7070"
+#      CONFIGSERVER_PORT: "7071"
+#    depends_on:
+#      - configserver
+#      - eurekaserver
+#    networks:
+#      backend:
+#        aliases:
+#          - "gatewayserver"
+#
+
+networks:
+  backend:
+    driver: bridge
+volumes:
+  dbdata6:
+    driver: local
+  sql-db:
+    driver: local
+#volumes:
+#  my-db:
+#    driver: local
+#  axonserver-data:
+#    driver: local
+#    driver_opts:
+#      type: none
+#      device: ${PWD}/axonserver/data
+#      o: bind
+#  axonserver-events:
+#    driver: local
+#    driver_opts:
+#        type: none
+#        device: ${PWD}/axonserver/events
+#        o: bind
+#  axonserver-config:
+#      driver: local
+#      driver_opts:
+#        type: none
+#        device: ${PWD}/axonserver/config
+#        o: bind
+
+#secrets:
+#  axonserver-properties:
+#    file: ./axonserver.properties
+#  axoniq-license:
+#    file: ./axoniq.license
+#  axonserver-token:
+#    file: ./axonserver.token
