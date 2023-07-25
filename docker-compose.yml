@@ -24,9 +24,9 @@ services:
       backend:
         aliases:
           - "axonserver"
-  mongodb:
+  mongo:
     image: mongo:6-jammy
-    container_name: mongodb
+    container_name: mongo
     ports:
       - '27017:27017'
     volumes:
@@ -34,7 +34,7 @@ services:
     networks:
       backend:
         aliases:
-          - "mongodb"
+          - "mongo"
   mongodbtest:
     image: mongo:latest
     container_name: mongodbtest
@@ -104,27 +104,53 @@ services:
         max_attempts: 3
         window: 120s
     environment:
-      SPRING_PROFILES_ACTIVE: docker
-      CONFIGSERVER_URI: "http://configserver:7071"
-      configserver: 'configserver'
-      eurekaserver: 'eurekaserver'
-      axonserver: 'axonserver'
-      SPRING_DATA_MONGODB_URI: mongodb://host.docker.internal:27017
-      mongodb: 'mongodb'
-      mongodbtest: 'mongodbtest'
-      CONFIGSERVER_PORT: "7071"
-      DATABASESERVER_PORT: "27017"
+      - SPRING_PROFILES_ACTIVE=docker
+      - MONGODB_URI=mongodb://mongo:27017/nomosnow
+      - configserver=configserver
+      - eurekaserver=eurekaserver
+      - axonserver=axonserver
+      - mongodbtest=mongodbtest
+      - CONFIGSERVER_PORT=7071
+      - DATABASESERVER_PORT=27017
     depends_on:
       - axonserver
       - configserver
       - eurekaserver
-      - mongodb
+      - mongo
     ports:
       - "5001:5001"
     networks:
       backend:
         aliases:
           - "users-service"
+  productservice:
+    build: ./product-service
+    image: product-service:latest
+    container_name: product-service
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+    environment:
+      - configserver=configserver
+      - SPRING_PROFILES_ACTIVE=dev
+      - CONFIGSERVER_URI=http://configserver:7071
+      - eurekaserver=eurekaserver
+      - axonserver=axonserver
+      - CONFIGSERVER_PORT=7071
+    depends_on:
+      - axonserver
+      - configserver
+      - eurekaserver
+      - mysql
+    ports:
+      - "5003:5003"
+    networks:
+      backend:
+        aliases:
+          - "product-service"
 #  gatewayserver:
 #    build: ./gateway-server
 #    image: gatewayserver:latest
@@ -160,35 +186,4 @@ networks:
     driver: bridge
 volumes:
   dbdata6:
-    driver: local
   sql-db:
-    driver: local
-#volumes:
-#  my-db:
-#    driver: local
-#  axonserver-data:
-#    driver: local
-#    driver_opts:
-#      type: none
-#      device: ${PWD}/axonserver/data
-#      o: bind
-#  axonserver-events:
-#    driver: local
-#    driver_opts:
-#        type: none
-#        device: ${PWD}/axonserver/events
-#        o: bind
-#  axonserver-config:
-#      driver: local
-#      driver_opts:
-#        type: none
-#        device: ${PWD}/axonserver/config
-#        o: bind
-
-#secrets:
-#  axonserver-properties:
-#    file: ./axonserver.properties
-#  axoniq-license:
-#    file: ./axoniq.license
-#  axonserver-token:
-#    file: ./axonserver.token
